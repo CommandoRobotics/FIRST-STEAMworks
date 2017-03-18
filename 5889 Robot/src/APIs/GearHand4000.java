@@ -49,12 +49,12 @@ public class GearHand4000 {
 		
 	}
 	
-	public void thrustLeft() {
+	public void thrustBackward() {
 		solenoidLeft.set(true);
 		solenoidRight.set(false);
 	}
 	
-	public void thrustRight() {
+	public void thrustForward() {
 		solenoidLeft.set(false);
 		solenoidRight.set(true);
 	}

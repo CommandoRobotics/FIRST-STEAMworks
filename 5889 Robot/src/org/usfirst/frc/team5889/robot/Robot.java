@@ -10,7 +10,11 @@ import APIs.Wench;
 import edu.wpi.first.wpilibj.IterativeRobot;
 import edu.wpi.first.wpilibj.Joystick;
 import edu.wpi.first.wpilibj.Timer;
+import edu.wpi.first.wpilibj.command.Command;
+import edu.wpi.first.wpilibj.command.Scheduler;
 import edu.wpi.first.wpilibj.livewindow.LiveWindow;
+import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 /**
  * The VM is configured to automatically run this class, and to call the
  * functions corresponding to each mode, as described in the IterativeRobot
@@ -19,8 +23,18 @@ import edu.wpi.first.wpilibj.livewindow.LiveWindow;
  * directory.
  */
 public class Robot extends IterativeRobot {
+	/*
+	 * TODO: Gyroscope
+	 * The back of our robot is the positive y-direction
+	 * The left side of our robot is the positive x-direction
+	 * Towards the sky is the positive z-direction
+	 * */
+	
+	
 	//Controls
 	List<Joystick> sticks;
+	Joystick joystickL;
+	Joystick joystickR;
 	Joystick xbox;
 	
 	public static final int XBOX_LEFT_Y = 1;
@@ -32,16 +46,14 @@ public class Robot extends IterativeRobot {
 	public static final int XBOX_RIGHT = 2;
 	public static final int XBOX_LEFT_BUMPER = 5;
 	public static final int XBOX_RIGHT_BUMPER = 6;
-	
-	private boolean aPressed;
-	
+		
 	Timer timer = new Timer();
 	
 	//APIs
 	Chassis chassis;
 	Shooter shooter;
-//	Visuals visuals;
-	GearHand4000 gearHand;
+	Visuals visuals;
+    GearHand4000 gearHand;
 	Wench wench;
 	
 	//Joystick varables
@@ -57,6 +69,14 @@ public class Robot extends IterativeRobot {
 	//TODO: Try to switch driver controls when camera switches
 	int cameraTurn = 1;
 	
+	//Autonomous Programs
+	private static final int DRIVE_TO_PEG_AND_BACK_OVER_LINE = 0;
+	private static final int SCORE_PEG_ON_LEFT = 1;
+	private static final int SCORE_PEG_ON_RIGHT = 2;
+	
+	int autonomousCommand;
+	SendableChooser<Integer> autoChooser;
+	
 	/**
 	 * 
 	 * This function is run when the robot is first started up and should be
@@ -64,14 +84,21 @@ public class Robot extends IterativeRobot {
 	 */
 	
 	public void robotInit() {
-		chassis = new Chassis(9, 8, 7, 6);
+		chassis = new Chassis(9, 8, 7, 6, 0);
 		shooter = new Shooter(1, 0);
-//		visuals = new Visuals(7, 8);
+		visuals = new Visuals(2, 3);
 		gearHand = new GearHand4000(0, 1);
 		wench = new Wench(4);
 		
-		xbox = new Joystick(0);
-		aPressed = false;
+		joystickR = new Joystick(0);
+		joystickL = new Joystick(1);
+		xbox = new Joystick(2);
+//		
+		autoChooser = new SendableChooser<Integer>();
+		autoChooser.addDefault("Straight for Gear", DRIVE_TO_PEG_AND_BACK_OVER_LINE);
+		autoChooser.addObject("Score Peg On Left", SCORE_PEG_ON_LEFT);
+		autoChooser.addObject("Score Peg On Right", SCORE_PEG_ON_RIGHT);
+		SmartDashboard.putData("Autonomous Mode Selection", autoChooser);
 	}
 
 	/**
@@ -80,15 +107,127 @@ public class Robot extends IterativeRobot {
 	@Override
 	public void autonomousInit() {
 		timer.reset();
-		timer.start();
+		timer.start(); 
+		
+		chassis.resetGyro();
+		
+		autonomousCommand = (int) autoChooser.getSelected();
+		if(autonomousCommand == DRIVE_TO_PEG_AND_BACK_OVER_LINE) driveToPegAndBackOverLine();
+		else if(autonomousCommand == SCORE_PEG_ON_LEFT) scorePegOnLeft();
+		else if(autonomousCommand == SCORE_PEG_ON_RIGHT) scorePegOnRight();
 	}
 
 	/**
 	 * This function is called periodically during autonomous
 	 */
+	
 	@Override
 	public void autonomousPeriodic() {
+		SmartDashboard.putNumber("Gyro", chassis.getGyroscope().getAngle());
+		Scheduler.getInstance().run();
 //		visuals.trackContours();
+		//driveToPeg();
+		//driveToLine();
+//		driveLeftScorePeg();
+//
+//		
+		if(timer.get() < 3) {
+			//forward(4);
+			scorePegOnRight();
+		}
+		
+		chassis.drive(0, 0);
+	}
+	 
+	void forward(double time){
+		double startTime = timer.get();
+		chassis.resetGyro();
+		gearHand.thrustForward();
+		
+		chassis.drive(0.5, 0.5);
+		while(timer.get() - startTime  < time){
+//			chassis.update();
+		}
+		
+		chassis.drive(0, 0);
+	}
+	
+	void backwards(double time){
+		double startTime = timer.get();
+		chassis.resetGyro();
+		gearHand.thrustForward();
+		
+		chassis.drive(-0.5, -0.5);
+		while(timer.get() - startTime < time){
+//			chassis.update();
+		}
+		
+		chassis.drive(0, 0);
+	}
+	
+	void turnLeft(double rotation) {
+		chassis.resetGyro();
+		gearHand.thrustForward();
+		
+		while(!chassis.seekRotation(360 - Math.abs(rotation), 0.4)){
+			//continue turning
+		}
+		
+		chassis.drive(0, 0);
+	}
+	
+	void turnRight(double rotation) {
+		chassis.resetGyro();
+		gearHand.thrustForward();
+		
+		while(!chassis.seekRotation(Math.abs(rotation), 0.4)){
+			//continue turning
+		}
+		
+		chassis.drive(0, 0);
+	}
+	
+	void delay(double delayTime) {
+		double startTime = timer.get();
+		chassis.drive(0, 0);
+		while(timer.get() - startTime < delayTime) {
+			//do nothing
+		}
+	}
+	
+	void driveToPegAndBackOverLine() {
+		forward(3.75);
+		delay(1.25);
+		while(timer.get() < 9.25){
+			chassis.drive(-.5, -.5);
+		}
+		while(timer.get() < 10.45){
+			chassis.drive(.8, -.8);
+		}
+		while(timer.get() < 11.65){
+			chassis.drive(.8, .8);
+		}
+		while(timer.get() < 12.65){
+			chassis.drive(-.8, .8);
+		}
+		while(timer.get() < 14.2){
+			chassis.drive(.8, .8);
+		}
+		chassis.drive(0, 0);
+	}
+	
+	void scorePegOnLeft(){
+		gearHand.thrustForward();
+		forward(2.0);
+		turnRight(45);
+		forward(2.2);
+	}
+	
+	void scorePegOnRight(){
+		gearHand.thrustForward();
+		forward(2.1);
+		turnLeft(45);
+		forward(2.2);
 	}
 
 	/**
@@ -98,6 +237,7 @@ public class Robot extends IterativeRobot {
 	@Override
 	public void teleopInit() {
 //		visuals.angleCamera(SHOOTER_PAN, SHOOTER_TILT);
+		chassis.drive(0, 0);
 	}
 
 	/**
@@ -108,13 +248,19 @@ public class Robot extends IterativeRobot {
 		
 		drive();
 		
-//		cameraControl();
+		cameraControl();
 
 		shooterControl();
 		
 		pneumaticControl();
 		
 		wenchControl();
+		
+		//SmartDashboard.putNumber("Gyro", chassis.getGyroscope().getAngle());
+		
+//		SmartDashboard.putNumber("Gyro", 45.0);
+		SmartDashboard.putNumber("Gyro", chassis.getGyroscope().getAngle());
+//		DriverStation.reportError("Gyro: " + chassis.getGyroscope().getAngle(), false);
 	}
 
 	/**
@@ -126,17 +272,17 @@ public class Robot extends IterativeRobot {
 	}
 	
 	public void drive() {
-		chassis.drive(-xbox.getRawAxis(XBOX_LEFT_Y), xbox.getRawAxis(XBOX_RIGHT_Y));
+		chassis.drive(-joystickL.getY(), -joystickR.getY());
+
 		
-		if(xbox.getRawButton(XBOX_BOTTOM) && !aPressed) {
-			aPressed = true;
-			chassis.toggleSpeedFactor();
-		} else {
-			aPressed = false;
-		}
+//		if(xbox.getRawButton(8)){
+//			chassis.setReverse(true);
+//		} else{
+//			chassis.setReverse(false);
+//		}
 	}
 	
-//	public void cameraControl(){
+	public void cameraControl(){
 //		
 //		if(xbox.getRawButton(XBOX_TOP)){
 //			visuals.angleCamera(SHOOTER_PAN, SHOOTER_TILT);
@@ -144,15 +290,15 @@ public class Robot extends IterativeRobot {
 //			visuals.angleCamera(GEARHAND_PAN, GEARHAND_TILT);
 //		}
 //		
-//	}
+	}
 	
 	public void pneumaticControl(){
 		gearHand.update();
 		
 		if(xbox.getRawButton(XBOX_LEFT)) {
-			gearHand.thrustLeft();
+			gearHand.thrustBackward();
 		} else if(xbox.getRawButton(XBOX_RIGHT)) {
-			gearHand.thrustRight();
+			gearHand.thrustForward();
 		} else {
 			gearHand.lock();
 		}
@@ -171,9 +317,9 @@ public class Robot extends IterativeRobot {
 		
 		if(xbox.getRawButton(XBOX_LEFT_BUMPER)) {
 			wench.pullUp();
-		} else if(xbox.getRawButton(XBOX_RIGHT_BUMPER)) {
+		} /*else if(xbox.getRawButton(XBOX_RIGHT_BUMPER)) {
 			wench.pullDown();
-		} else {
+		}*/ else {
 			wench.deactivate();
 		}
 		
