@@ -7,10 +7,15 @@ import APIs.GearHand4000;
 import APIs.Shooter;
 import APIs.Visuals;
 import APIs.Wench;
+import AutnomousPrograms.ScoreMiddlePeg;
+import AutnomousPrograms.ScorePegOnLeft;
+import AutnomousPrograms.ScorePegOnRight;
+import AutonomousCommands.Tests.LeftFront;
+import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.IterativeRobot;
 import edu.wpi.first.wpilibj.Joystick;
 import edu.wpi.first.wpilibj.Timer;
-import edu.wpi.first.wpilibj.command.Command;
+import edu.wpi.first.wpilibj.command.CommandGroup;
 import edu.wpi.first.wpilibj.command.Scheduler;
 import edu.wpi.first.wpilibj.livewindow.LiveWindow;
 import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
@@ -69,13 +74,8 @@ public class Robot extends IterativeRobot {
 	//TODO: Try to switch driver controls when camera switches
 	int cameraTurn = 1;
 	
-	//Autonomous Programs
-	private static final int DRIVE_TO_PEG_AND_BACK_OVER_LINE = 0;
-	private static final int SCORE_PEG_ON_LEFT = 1;
-	private static final int SCORE_PEG_ON_RIGHT = 2;
-	
-	int autonomousCommand;
-	SendableChooser<Integer> autoChooser;
+	CommandGroup autonomousProgram;
+	SendableChooser autoChooser;
 	
 	/**
 	 * 
@@ -87,18 +87,21 @@ public class Robot extends IterativeRobot {
 		chassis = new Chassis(9, 8, 7, 6, 0);
 		shooter = new Shooter(1, 0);
 		visuals = new Visuals(2, 3);
-		gearHand = new GearHand4000(0, 1);
-		wench = new Wench(4);
+		gearHand = new GearHand4000(1, 0);
+		wench = new Wench(5);
 		
-		joystickR = new Joystick(0);
-		joystickL = new Joystick(1);
-		xbox = new Joystick(2);
+		joystickL = new Joystick(0);
+		joystickR = new Joystick(1);
+		xbox = new	 Joystick(2);
 //		
-		autoChooser = new SendableChooser<Integer>();
-		autoChooser.addDefault("Straight for Gear", DRIVE_TO_PEG_AND_BACK_OVER_LINE);
-		autoChooser.addObject("Score Peg On Left", SCORE_PEG_ON_LEFT);
-		autoChooser.addObject("Score Peg On Right", SCORE_PEG_ON_RIGHT);
-		SmartDashboard.putData("Autonomous Mode Selection", autoChooser);
+		autoChooser = new SendableChooser();
+		autoChooser.addDefault("Straight For Gear", new ScoreMiddlePeg(chassis, gearHand, timer));
+		autoChooser.addObject("Score Peg On Left", new ScorePegOnLeft(chassis, gearHand, timer));
+		autoChooser.addObject("Score Peg On Right", new ScorePegOnRight(chassis, gearHand, timer));
+		SmartDashboard.putData("Auto Selector", autoChooser);
+		DriverStation.reportError("Auto Selector: " + SmartDashboard.getData("Auto Selector").toString(), false);
+		DriverStation.reportError("Select Auto: " + SmartDashboard.getData("Select Auto").toString(), false);
+		DriverStation.reportError("Select Autonomous: " + SmartDashboard.getData("Select Autonomous").toString(), false);
 	}
 
 	/**
@@ -111,10 +114,8 @@ public class Robot extends IterativeRobot {
 		
 		chassis.resetGyro();
 		
-		autonomousCommand = (int) autoChooser.getSelected();
-		if(autonomousCommand == DRIVE_TO_PEG_AND_BACK_OVER_LINE) driveToPegAndBackOverLine();
-		else if(autonomousCommand == SCORE_PEG_ON_LEFT) scorePegOnLeft();
-		else if(autonomousCommand == SCORE_PEG_ON_RIGHT) scorePegOnRight();
+		autonomousProgram = (CommandGroup) autoChooser.getSelected();
+		autonomousProgram.start();
 	}
 
 	/**
@@ -125,18 +126,6 @@ public class Robot extends IterativeRobot {
 	public void autonomousPeriodic() {
 		SmartDashboard.putNumber("Gyro", chassis.getGyroscope().getAngle());
 		Scheduler.getInstance().run();
-//		visuals.trackContours();
-		//driveToPeg();
-		//driveToLine();
-//		driveLeftScorePeg();
-//
-//		
-		if(timer.get() < 3) {
-			//forward(4);
-			scorePegOnRight();
-		}
-		
-		chassis.drive(0, 0);
 	}
 	 
 	void forward(double time){
@@ -144,12 +133,12 @@ public class Robot extends IterativeRobot {
 		chassis.resetGyro();
 		gearHand.thrustForward();
 		
-		chassis.drive(0.5, 0.5);
+		chassis.drive(0.5, 0.5, false);
 		while(timer.get() - startTime  < time){
 //			chassis.update();
 		}
 		
-		chassis.drive(0, 0);
+		chassis.drive(0, 0, false);
 	}
 	
 	void backwards(double time){
@@ -157,12 +146,12 @@ public class Robot extends IterativeRobot {
 		chassis.resetGyro();
 		gearHand.thrustForward();
 		
-		chassis.drive(-0.5, -0.5);
+		chassis.drive(-0.5, -0.5, false);
 		while(timer.get() - startTime < time){
 //			chassis.update();
 		}
 		
-		chassis.drive(0, 0);
+		chassis.drive(0, 0, false);
 	}
 	
 	void turnLeft(double rotation) {
@@ -173,7 +162,7 @@ public class Robot extends IterativeRobot {
 			//continue turning
 		}
 		
-		chassis.drive(0, 0);
+		chassis.drive(0, 0, false);
 	}
 	
 	void turnRight(double rotation) {
@@ -184,36 +173,19 @@ public class Robot extends IterativeRobot {
 			//continue turning
 		}
 		
-		chassis.drive(0, 0);
+		chassis.drive(0, 0, false);
 	}
 	
 	void delay(double delayTime) {
 		double startTime = timer.get();
-		chassis.drive(0, 0);
+		chassis.drive(0, 0, false);
 		while(timer.get() - startTime < delayTime) {
 			//do nothing
 		}
 	}
 	
 	void driveToPegAndBackOverLine() {
-		forward(3.75);
-		delay(1.25);
-		while(timer.get() < 9.25){
-			chassis.drive(-.5, -.5);
-		}
-		while(timer.get() < 10.45){
-			chassis.drive(.8, -.8);
-		}
-		while(timer.get() < 11.65){
-			chassis.drive(.8, .8);
-		}
-		while(timer.get() < 12.65){
-			chassis.drive(-.8, .8);
-		}
-		while(timer.get() < 14.2){
-			chassis.drive(.8, .8);
-		}
-		chassis.drive(0, 0);
+		
 	}
 	
 	void scorePegOnLeft(){
@@ -237,7 +209,7 @@ public class Robot extends IterativeRobot {
 	@Override
 	public void teleopInit() {
 //		visuals.angleCamera(SHOOTER_PAN, SHOOTER_TILT);
-		chassis.drive(0, 0);
+		chassis.drive(0, 0, false);
 	}
 
 	/**
@@ -272,7 +244,7 @@ public class Robot extends IterativeRobot {
 	}
 	
 	public void drive() {
-		chassis.drive(-joystickL.getY(), -joystickR.getY());
+		chassis.drive(-joystickL.getY(), -joystickR.getY(), false);
 
 		
 //		if(xbox.getRawButton(8)){
@@ -315,9 +287,9 @@ public class Robot extends IterativeRobot {
 	
 	public void wenchControl(){
 		
-		if(xbox.getRawButton(XBOX_LEFT_BUMPER)) {
+		if(xbox.getRawButton(XBOX_LEFT_BUMPER) || xbox.getRawButton(XBOX_RIGHT_BUMPER)) {
 			wench.pullUp();
-		} /*else if(xbox.getRawButton(XBOX_RIGHT_BUMPER)) {
+		}/* else if(xbox.getRawButton(XBOX_RIGHT_BUMPER)) {
 			wench.pullDown();
 		}*/ else {
 			wench.deactivate();
